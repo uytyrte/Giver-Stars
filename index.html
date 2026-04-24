@@ -2,35 +2,170 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>RichAds Mini App</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #070a12;
+            color: #f8fafc;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            background: radial-gradient(circle at top, rgba(56, 189, 248, 0.15), transparent 25%),
+                        radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.12), transparent 20%),
+                        linear-gradient(180deg, #020617 0%, #090d1f 100%);
+        }
+
+        .panel {
+            width: 100%;
+            max-width: 430px;
+            border-radius: 28px;
+            padding: 28px;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 24px 90px rgba(0, 0, 0, 0.25);
+        }
+
+        h1 {
+            margin: 0 0 14px;
+            font-size: 1.95rem;
+            letter-spacing: -0.04em;
+            color: #e2e8f0;
+        }
+
+        p {
+            margin: 0 0 24px;
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+
+        .status {
+            margin: 0 0 24px;
+            padding: 16px;
+            border-radius: 18px;
+            background: rgba(148, 163, 184, 0.08);
+            color: #e2e8f0;
+            border: 1px solid rgba(148, 163, 184, 0.12);
+        }
+
+        button {
+            width: 100%;
+            padding: 16px 20px;
+            border: none;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #38bdf8, #8b5cf6);
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+            box-shadow: 0 18px 40px rgba(56, 189, 248, 0.25);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.04);
+        }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .footer {
+            margin-top: 22px;
+            font-size: 0.95rem;
+            color: #94a3b8;
+        }
+    </style>
 </head>
 <body>
-    <h1>RichAds Mini App</h1>
-    <p>Нажмите кнопку, чтобы показать рекламу RichAds.</p>
-    <button id="show-ad">Показать рекламу</button>
+    <div class="panel">
+        <h1>RichAds Mini App</h1>
+        <p>Нажмите кнопку ниже, чтобы показать рекламное объявление. Если админ не настроил RichAds, вы увидите понятную подсказку.</p>
+        <div class="status" id="status-text">Загружаем настройки...</div>
+        <button id="show-ad">Показать рекламу</button>
+        <div class="footer">Если кнопка не запускает рекламу, обратитесь к администратору бота.</div>
+    </div>
 
     <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
     <script src="https://richinfo.co/richpartners/telegram/js/tg-ob.js"></script>
     <script>
-        const richadsController = new window.TelegramAdsController();
-        richadsController.initialize({
-            pubId: "1008859",
-            appId: "395090",
-            debug: true
-        });
+        const STATUS = document.getElementById('status-text');
+        const BUTTON = document.getElementById('show-ad');
+        const PUB_ID = '1008859';
+        const APP_ID = '395090';
 
-        document.getElementById('show-ad').addEventListener('click', () => {
-            richadsController.triggerInterstitialVideo()
-                .then(result => {
-                    console.log('Ad result:', result);
-                    alert('Реклама показана');
-                })
-                .catch(error => {
-                    console.error('Ad error:', error);
-                    alert('Ошибка показа рекламы');
-                });
-        });
+        function updateStatus(text) {
+            STATUS.textContent = text;
+        }
+
+        function disableButton(label) {
+            BUTTON.disabled = true;
+            BUTTON.textContent = label;
+        }
+
+        function applyTheme() {
+            const tg = window.Telegram?.WebApp || window.Telegram?.webApp;
+            if (!tg) return;
+            if (tg.expand) tg.expand();
+            const params = tg.themeParams || {};
+            if (params.bg_color) document.body.style.background = params.bg_color;
+        }
+
+        applyTheme();
+
+        const hasAdsController = typeof window.TelegramAdsController === 'function';
+        const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
+
+        if (!hasAdsController) {
+            updateStatus('RichAds не загружен. Реклама пока недоступна.');
+            disableButton('Реклама недоступна');
+        } else if (!isConfigured) {
+            updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
+            disableButton('Настройте RichAds');
+        } else {
+            updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
+
+            const richadsController = new window.TelegramAdsController();
+            richadsController.initialize({
+                pubId: PUB_ID,
+                appId: APP_ID,
+                debug: true
+            });
+
+            BUTTON.addEventListener('click', () => {
+                BUTTON.textContent = 'Загрузка...';
+                BUTTON.disabled = true;
+
+                richadsController.triggerInterstitialVideo()
+                    .then(result => {
+                        console.log('Ad result:', result);
+                        updateStatus('Реклама показана. Спасибо!');
+                        BUTTON.textContent = 'Показать рекламу';
+                        BUTTON.disabled = false;
+                    })
+                    .catch(error => {
+                        console.error('Ad error:', error);
+                        updateStatus('Ошибка показа рекламы. Попробуйте позже.');
+                        BUTTON.textContent = 'Показать рекламу';
+                        BUTTON.disabled = false;
+                    });
+            });
+        }
     </script>
 </body>
 </html>
