@@ -149,14 +149,27 @@
             enableButton('Повторить');
         }
 
+        window.addEventListener('error', event => {
+            console.error('Window error:', event.error || event.message);
+            updateStatus('Ошибка загрузки страницы: ' + (event.message || 'см. консоль'));
+            disableButton('Ошибка');
+        });
+
+        window.addEventListener('unhandledrejection', event => {
+            console.error('Unhandled rejection:', event.reason);
+            updateStatus('Ошибка загрузки рекламы: ' + formatError(event.reason));
+            enableButton('Повторить');
+        });
+
         applyTheme();
 
-        const AdsClass = window.TelegramAdsController || window.Telegram?.TelegramAdsController;
+        const AdsClass = window.TelegramAdsController || (typeof TelegramAdsController !== 'undefined' ? TelegramAdsController : null) || window.Telegram?.TelegramAdsController || window.Telegram?.WebApp?.TelegramAdsController || window.Telegram?.webApp?.TelegramAdsController;
         const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
 
         if (!AdsClass) {
             updateStatus('RichAds не загружен. Проверьте подключение tg-ob.js.');
             disableButton('Реклама недоступна');
+            console.log('RichAds class not found:', window.TelegramAdsController, typeof TelegramAdsController, window.Telegram);
         } else if (!isConfigured) {
             updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
             disableButton('Настройте RichAds');
@@ -208,6 +221,13 @@
                 }
             });
         }
+
+        setTimeout(() => {
+            if (STATUS.textContent === 'Загружаем настройки...') {
+                updateStatus('Статус не обновляется. Возможно, что скрипт не загружается или ошибки в консоли.');
+                disableButton('Ошибка');
+            }
+        }, 2200);
     </script>
 </body>
 </html>
