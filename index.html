@@ -217,7 +217,7 @@
 
         async function initializeController() {
             try {
-                const result = controller.initialize({ pubId: PUB_ID, appId: APP_ID, debug: true });
+                const result = controller.initialize({ pubId: PUB_ID, appId: APP_ID, debug: false });
                 if (result && typeof result.then === 'function') {
                     logDebug('controller.initialize() returned Promise');
                     await result;
