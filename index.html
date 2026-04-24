@@ -97,6 +97,7 @@
         <h1>RichAds Mini App</h1>
         <p>Нажмите кнопку ниже, чтобы показать рекламное объявление. Если админ не настроил RichAds, вы увидите понятную подсказку.</p>
         <div class="status" id="status-text">Загружаем настройки...</div>
+        <pre class="status" id="debug-log" style="white-space: pre-wrap; max-height: 160px; overflow-y: auto; margin-bottom: 18px;">Журнал загрузки...</pre>
         <button id="show-ad">Показать рекламу</button>
         <div class="footer">Если кнопка не запускает рекламу, обратитесь к администратору бота.</div>
     </div>
@@ -106,6 +107,7 @@
     <script>
         const STATUS = document.getElementById('status-text');
         const BUTTON = document.getElementById('show-ad');
+        const DEBUG = document.getElementById('debug-log');
         const PUB_ID = '1008859';
         const APP_ID = '395090';
 
@@ -123,14 +125,6 @@
             BUTTON.textContent = label;
         }
 
-        function applyTheme() {
-            const tg = window.Telegram?.WebApp || window.Telegram?.webApp;
-            if (!tg) return;
-            if (typeof tg.ready === 'function') tg.ready();
-            const params = tg.themeParams || {};
-            if (params.bg_color) document.body.style.background = params.bg_color;
-        }
-
         function formatError(error) {
             if (!error) return 'Неизвестная ошибка';
             if (typeof error === 'string') return error;
@@ -142,22 +136,43 @@
             }
         }
 
+        function logDebug(message) {
+            const text = typeof message === 'string' ? message : JSON.stringify(message, null, 2);
+            console.log(text);
+            if (DEBUG) {
+                if (DEBUG.textContent === 'Журнал загрузки...') {
+                    DEBUG.textContent = '';
+                }
+                DEBUG.textContent += text + '\n';
+                DEBUG.scrollTop = DEBUG.scrollHeight;
+            }
+        }
+
         function logError(error) {
             const text = formatError(error);
             console.error('RichAds error:', error);
-            updateStatus(`Ошибка показа рекламы: ${text}`);
+            updateStatus(`Ошибка: ${text}`);
             enableButton('Повторить');
+            logDebug(`ERROR: ${text}`);
+        }
+
+        function applyTheme() {
+            const tg = window.Telegram?.WebApp || window.Telegram?.webApp;
+            if (!tg) return;
+            if (typeof tg.ready === 'function') tg.ready();
+            const params = tg.themeParams || {};
+            if (params.bg_color) document.body.style.background = params.bg_color;
         }
 
         window.addEventListener('error', event => {
-            console.error('Window error:', event.error || event.message);
-            updateStatus('Ошибка загрузки страницы: ' + (event.message || 'см. консоль'));
+            logDebug(`window.error: ${formatError(event.error || event.message)}`);
+            updateStatus('Ошибка загрузки страницы: см. журнал.');
             disableButton('Ошибка');
         });
 
         window.addEventListener('unhandledrejection', event => {
-            console.error('Unhandled rejection:', event.reason);
-            updateStatus('Ошибка загрузки рекламы: ' + formatError(event.reason));
+            logDebug(`unhandledrejection: ${formatError(event.reason)}`);
+            updateStatus('Ошибка загрузки рекламы: см. журнал.');
             enableButton('Повторить');
         });
 
@@ -167,60 +182,89 @@
         const hasControllerClass = typeof TelegramAdsController === 'function';
         const hasControllerInstance = window.TelegramAdsController && typeof window.TelegramAdsController.initialize === 'function';
 
+        function dumpEnv() {
+            logDebug(`Current URL: ${location.href}`);
+            logDebug(`User agent: ${navigator.userAgent}`);
+            logDebug(`Document readyState: ${document.readyState}`);
+            logDebug(`Telegram object: ${typeof window.Telegram}`);
+            logDebug(`Telegram.WebApp object: ${typeof window.Telegram?.WebApp}`);
+            logDebug(`Telegram platform: ${window.Telegram?.WebApp?.platform || window.Telegram?.webApp?.platform || 'unknown'}`);
+            logDebug(`TelegramAdsController class: ${typeof TelegramAdsController}`);
+            logDebug(`TelegramAdsController instance: ${typeof window.TelegramAdsController}`);
+            logDebug(`pubId: ${PUB_ID}`);
+            logDebug(`appId: ${APP_ID}`);
+        }
+
         if (!hasControllerClass && !hasControllerInstance) {
             updateStatus('RichAds не загружен. Проверьте подключение tg-ob.js.');
             disableButton('Реклама недоступна');
-            console.log('RichAds class not found:', typeof TelegramAdsController, window.TelegramAdsController);
-            setTimeout(() => {
-                if (STATUS.textContent.includes('Загружаем')) {
-                    updateStatus('RichAds не обнаружен. Откройте приложение заново и проверьте URL.');
-                }
-            }, 2200);
+            dumpEnv();
             return;
         }
 
         if (!isConfigured) {
             updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
             disableButton('Настройте RichAds');
+            dumpEnv();
             return;
         }
 
-        updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
+        updateStatus('Проверяем RichAds...');
+        dumpEnv();
 
         const controller = hasControllerInstance ? window.TelegramAdsController : new TelegramAdsController();
         window.TelegramAdsController = controller;
 
-        try {
-            controller.initialize({
-                pubId: PUB_ID,
-                appId: APP_ID,
-                debug: true
-            });
-        } catch (error) {
-            logError(error);
-            return;
+        async function initializeController() {
+            try {
+                const result = controller.initialize({ pubId: PUB_ID, appId: APP_ID, debug: true });
+                if (result && typeof result.then === 'function') {
+                    logDebug('controller.initialize() returned Promise');
+                    await result;
+                } else {
+                    logDebug('controller.initialize() returned: ' + JSON.stringify(result));
+                }
+                updateStatus('RichAds инициализирован. Нажмите кнопку, чтобы запустить рекламу.');
+                enableButton();
+                logDebug('RichAds initialized successfully');
+            } catch (error) {
+                logError(error);
+                disableButton('Ошибка инициализации');
+            }
+        }
+
+        function getAdMethods() {
+            return [
+                { name: 'Video', fn: controller.triggerInterstitialVideo?.bind(controller) },
+                { name: 'Banner', fn: controller.triggerInterstitialBanner?.bind(controller) },
+                { name: 'Push', fn: controller.triggerNativeNotification?.bind(controller) }
+            ].filter(item => typeof item.fn === 'function');
         }
 
         async function tryAdMethods() {
-            const methods = [
-                { name: 'Video', fn: () => controller.triggerInterstitialVideo() },
-                { name: 'Banner', fn: () => controller.triggerInterstitialBanner() },
-                { name: 'Push', fn: () => controller.triggerNativeNotification() }
-            ];
-
+            const methods = getAdMethods();
+            if (methods.length === 0) {
+                throw new Error('Не найден ни один метод показа рекламы в TelegramAdsController');
+            }
             for (const method of methods) {
                 try {
-                    updateStatus(`Пробуем показать ${method.name}-рекламу...`);
-                    const result = await method.fn();
-                    console.log(`Ad ${method.name} result:`, result);
-                    updateStatus(`Реклама ${method.name} показана.`);
+                    updateStatus(`Пробуем ${method.name}...`);
+                    logDebug(`Calling method: ${method.name}`);
+                    const result = method.fn();
+                    if (result && typeof result.then === 'function') {
+                        const awaited = await result;
+                        logDebug(`${method.name} result: ${JSON.stringify(awaited)}`);
+                    } else {
+                        logDebug(`${method.name} returned: ${JSON.stringify(result)}`);
+                    }
+                    updateStatus(`${method.name} вызвано.`);
                     enableButton('Показать рекламу');
                     return;
                 } catch (error) {
+                    logDebug(`${method.name} failed: ${formatError(error)}`);
                     console.warn(`Ad ${method.name} failed:`, error);
                 }
             }
-
             throw new Error('Ни один формат рекламы не доступен');
         }
 
@@ -232,6 +276,8 @@
                 logError(error);
             }
         });
+
+        initializeController();
     </script>
 </body>
 </html>
