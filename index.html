@@ -163,80 +163,75 @@
 
         applyTheme();
 
-        const AdsClass = window.TelegramAdsController || (typeof TelegramAdsController !== 'undefined' ? TelegramAdsController : null);
-        const existingController = window.TelegramAdsController && typeof window.TelegramAdsController.initialize === 'function' ? window.TelegramAdsController : null;
         const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
+        const hasControllerClass = typeof TelegramAdsController === 'function';
+        const hasControllerInstance = window.TelegramAdsController && typeof window.TelegramAdsController.initialize === 'function';
 
-        if (!AdsClass && !existingController) {
+        if (!hasControllerClass && !hasControllerInstance) {
             updateStatus('RichAds не загружен. Проверьте подключение tg-ob.js.');
             disableButton('Реклама недоступна');
-            console.log('RichAds class not found:', window.TelegramAdsController, typeof TelegramAdsController, window.Telegram);
-        } else if (!isConfigured) {
-            updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
-            disableButton('Настройте RichAds');
-        } else {
-            updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
-
-            const richadsController = existingController || new AdsClass();
-
-            try {
-                if (!existingController) {
-                    richadsController.initialize({
-                        pubId: PUB_ID,
-                        appId: APP_ID,
-                        debug: true
-                    });
-                } else {
-                    richadsController.initialize({
-                        pubId: PUB_ID,
-                        appId: APP_ID,
-                        debug: true
-                    });
+            console.log('RichAds class not found:', typeof TelegramAdsController, window.TelegramAdsController);
+            setTimeout(() => {
+                if (STATUS.textContent.includes('Загружаем')) {
+                    updateStatus('RichAds не обнаружен. Откройте приложение заново и проверьте URL.');
                 }
-            } catch (error) {
-                logError(error);
-                return;
-            }
-
-            async function tryAdMethods() {
-                const methods = [
-                    { name: 'Video', fn: () => richadsController.triggerInterstitialVideo() },
-                    { name: 'Banner', fn: () => richadsController.triggerInterstitialBanner() },
-                    { name: 'Push', fn: () => richadsController.triggerNativeNotification() }
-                ];
-
-                for (const method of methods) {
-                    try {
-                        updateStatus(`Пробуем показать ${method.name}-рекламу...`);
-                        const result = await method.fn();
-                        console.log(`Ad ${method.name} result:`, result);
-                        updateStatus(`Реклама ${method.name} показана.`);
-                        enableButton('Показать рекламу');
-                        return;
-                    } catch (error) {
-                        console.warn(`Ad ${method.name} failed:`, error);
-                    }
-                }
-
-                throw new Error('Ни один формат рекламы не доступен');
-            }
-
-            BUTTON.addEventListener('click', async () => {
-                disableButton('Загрузка...');
-                try {
-                    await tryAdMethods();
-                } catch (error) {
-                    logError(error);
-                }
-            });
+            }, 2200);
+            return;
         }
 
-        setTimeout(() => {
-            if (STATUS.textContent === 'Загружаем настройки...') {
-                updateStatus('Статус не обновляется. Возможно, что скрипт не загружается или ошибки в консоли.');
-                disableButton('Ошибка');
+        if (!isConfigured) {
+            updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
+            disableButton('Настройте RichAds');
+            return;
+        }
+
+        updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
+
+        const controller = hasControllerInstance ? window.TelegramAdsController : new TelegramAdsController();
+        window.TelegramAdsController = controller;
+
+        try {
+            controller.initialize({
+                pubId: PUB_ID,
+                appId: APP_ID,
+                debug: true
+            });
+        } catch (error) {
+            logError(error);
+            return;
+        }
+
+        async function tryAdMethods() {
+            const methods = [
+                { name: 'Video', fn: () => controller.triggerInterstitialVideo() },
+                { name: 'Banner', fn: () => controller.triggerInterstitialBanner() },
+                { name: 'Push', fn: () => controller.triggerNativeNotification() }
+            ];
+
+            for (const method of methods) {
+                try {
+                    updateStatus(`Пробуем показать ${method.name}-рекламу...`);
+                    const result = await method.fn();
+                    console.log(`Ad ${method.name} result:`, result);
+                    updateStatus(`Реклама ${method.name} показана.`);
+                    enableButton('Показать рекламу');
+                    return;
+                } catch (error) {
+                    console.warn(`Ad ${method.name} failed:`, error);
+                }
             }
-        }, 2200);
+
+            throw new Error('Ни один формат рекламы не доступен');
+        }
+
+        BUTTON.addEventListener('click', async () => {
+            disableButton('Загрузка...');
+            try {
+                await tryAdMethods();
+            } catch (error) {
+                logError(error);
+            }
+        });
     </script>
 </body>
 </html>
