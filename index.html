@@ -107,7 +107,7 @@
         const STATUS = document.getElementById('status-text');
         const BUTTON = document.getElementById('show-ad');
         const PUB_ID = '1008859';
-        const APP_ID = '395090';
+        const APP_ID = '7188';
 
         function updateStatus(text) {
             STATUS.textContent = text;
@@ -163,10 +163,11 @@
 
         applyTheme();
 
-        const AdsClass = window.TelegramAdsController || (typeof TelegramAdsController !== 'undefined' ? TelegramAdsController : null) || window.Telegram?.TelegramAdsController || window.Telegram?.WebApp?.TelegramAdsController || window.Telegram?.webApp?.TelegramAdsController;
+        const AdsClass = window.TelegramAdsController || (typeof TelegramAdsController !== 'undefined' ? TelegramAdsController : null);
+        const existingController = window.TelegramAdsController && typeof window.TelegramAdsController.initialize === 'function' ? window.TelegramAdsController : null;
         const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
 
-        if (!AdsClass) {
+        if (!AdsClass && !existingController) {
             updateStatus('RichAds не загружен. Проверьте подключение tg-ob.js.');
             disableButton('Реклама недоступна');
             console.log('RichAds class not found:', window.TelegramAdsController, typeof TelegramAdsController, window.Telegram);
@@ -176,14 +177,22 @@
         } else {
             updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
 
-            const richadsController = new AdsClass();
+            const richadsController = existingController || new AdsClass();
 
             try {
-                richadsController.initialize({
-                    pubId: PUB_ID,
-                    appId: APP_ID,
-                    debug: true
-                });
+                if (!existingController) {
+                    richadsController.initialize({
+                        pubId: PUB_ID,
+                        appId: APP_ID,
+                        debug: true
+                    });
+                } else {
+                    richadsController.initialize({
+                        pubId: PUB_ID,
+                        appId: APP_ID,
+                        debug: true
+                    });
+                }
             } catch (error) {
                 logError(error);
                 return;
