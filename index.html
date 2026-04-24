@@ -110,6 +110,7 @@
         const DEBUG = document.getElementById('debug-log');
         const PUB_ID = '1008859';
         const APP_ID = '395090';
+        const DEBUG_MODE = true;
 
         function updateStatus(text) {
             STATUS.textContent = text;
@@ -188,11 +189,13 @@
             logDebug(`Document readyState: ${document.readyState}`);
             logDebug(`Telegram object: ${typeof window.Telegram}`);
             logDebug(`Telegram.WebApp object: ${typeof window.Telegram?.WebApp}`);
+            logDebug(`Telegram WebApp initDataUnsafe: ${JSON.stringify(window.Telegram?.WebApp?.initDataUnsafe || window.Telegram?.webApp?.initDataUnsafe || {})}`);
             logDebug(`Telegram platform: ${window.Telegram?.WebApp?.platform || window.Telegram?.webApp?.platform || 'unknown'}`);
             logDebug(`TelegramAdsController class: ${typeof TelegramAdsController}`);
             logDebug(`TelegramAdsController instance: ${typeof window.TelegramAdsController}`);
             logDebug(`pubId: ${PUB_ID}`);
             logDebug(`appId: ${APP_ID}`);
+            logDebug(`debug: ${DEBUG_MODE}`);
         }
 
         if (!hasControllerClass && !hasControllerInstance) {
@@ -217,7 +220,7 @@
 
         async function initializeController() {
             try {
-                const result = controller.initialize({ pubId: PUB_ID, appId: APP_ID, debug: true });
+                const result = controller.initialize({ pubId: PUB_ID, appId: APP_ID, debug: DEBUG_MODE });
                 if (result && typeof result.then === 'function') {
                     logDebug('controller.initialize() returned Promise');
                     await result;
