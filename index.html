@@ -183,6 +183,7 @@
             enableButton('Повторить');
         });
 
+        const originalFetch = window.fetch?.bind(window);
         applyTheme();
 
         const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
@@ -202,6 +203,37 @@
             logDebug(`pubId: ${PUB_ID}`);
             logDebug(`appId: ${APP_ID}`);
             logDebug(`debug: ${DEBUG_MODE}`);
+        }
+
+        function installNetworkLogging() {
+            if (window.fetch && window.fetch !== originalFetch) {
+                window.fetch = async function(url, options) {
+                    logDebug(`fetch -> ${url} [${(options && options.method) || 'GET'}]`);
+                    const response = await originalFetch.apply(this, arguments);
+                    logDebug(`fetch response <- ${url} [${response.status}]`);
+                    return response;
+                };
+            }
+
+            if (window.XMLHttpRequest) {
+                const originalOpen = XMLHttpRequest.prototype.open;
+                const originalSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    this._logUrl = url;
+                    this._logMethod = method;
+                    return originalOpen.apply(this, arguments);
+                };
+                XMLHttpRequest.prototype.send = function(body) {
+                    logDebug(`XHR -> ${this._logMethod || 'UNKNOWN'} ${this._logUrl}`);
+                    this.addEventListener('load', () => {
+                        logDebug(`XHR response <- ${this._logMethod || 'UNKNOWN'} ${this._logUrl} [${this.status}]`);
+                    });
+                    this.addEventListener('error', () => {
+                        logDebug(`XHR error <- ${this._logMethod || 'UNKNOWN'} ${this._logUrl}`);
+                    });
+                    return originalSend.apply(this, arguments);
+                };
+            }
         }
 
         if (!hasControllerClass && !hasControllerInstance) {
@@ -225,6 +257,7 @@
         window.TelegramAdsController = controller;
         logDebug(`controller created: ${typeof controller}`);
         logDebug(`controller methods: initialize=${typeof controller.initialize}, triggerInterstitialVideo=${typeof controller.triggerInterstitialVideo}, triggerInterstitialBanner=${typeof controller.triggerInterstitialBanner}, triggerNativeNotification=${typeof controller.triggerNativeNotification}`);
+        installNetworkLogging();
 
         async function initializeController() {
             try {
@@ -252,41 +285,62 @@
             ].filter(item => typeof item.fn === 'function');
         }
 
-        async function tryAdMethods() {
-            const methods = getAdMethods();
-            logDebug(`Available ad methods: ${methods.map(m => m.name).join(', ')}`);
-            if (methods.length === 0) {
-                throw new Error('Не найден ни один метод показа рекламы в TelegramAdsController');
+        async function requestVideoAd() {
+            if (typeof controller.triggerInterstitialVideo !== 'function') {
+                throw new Error('triggerInterstitialVideo не доступен');
             }
+            logDebug('Requesting triggerInterstitialVideo()');
+            const result = controller.triggerInterstitialVideo();
+            if (result && typeof result.then === 'function') {
+                const awaited = await result;
+                logDebug(`triggerInterstitialVideo promise resolved: ${JSON.stringify(awaited)}`);
+                return awaited;
+            }
+            logDebug(`triggerInterstitialVideo returned non-promise: ${JSON.stringify(result)}`);
+            return result;
+        }
+
+        async function requestFallbackAd() {
+            const methods = getAdMethods();
+            logDebug(`Available ad methods for fallback: ${methods.map(m => m.name).join(', ')}`);
             for (const method of methods) {
+                if (method.name === 'Video') continue;
                 try {
                     updateStatus(`Пробуем ${method.name}...`);
-                    logDebug(`Calling method: ${method.name}`);
+                    logDebug(`Calling fallback method: ${method.name}`);
                     const result = method.fn();
                     if (result && typeof result.then === 'function') {
                         const awaited = await result;
-                        logDebug(`${method.name} result: ${JSON.stringify(awaited)}`);
-                    } else {
-                        logDebug(`${method.name} returned: ${JSON.stringify(result)}`);
+                        logDebug(`${method.name} promise resolved: ${JSON.stringify(awaited)}`);
+                        return awaited;
                     }
-                    updateStatus(`${method.name} вызвано.`);
-                    enableButton('Показать рекламу');
-                    return;
+                    logDebug(`${method.name} returned non-promise: ${JSON.stringify(result)}`);
+                    return result;
                 } catch (error) {
                     logDebug(`${method.name} failed: ${formatError(error)}`);
                     console.warn(`Ad ${method.name} failed:`, error);
                 }
             }
-            throw new Error('Ни один формат рекламы не доступен');
+            throw new Error('Нет доступных fallback-методов рекламы');
         }
 
         BUTTON.addEventListener('click', async () => {
             logDebug('Button click event fired');
             disableButton('Загрузка...');
+            updateStatus('Отправляем запрос RichAds...');
             try {
-                await tryAdMethods();
-            } catch (error) {
-                logError(error);
+                await requestVideoAd();
+                updateStatus('Запрос на видео-рекламу отправлен. Ожидайте отображения.' );
+            } catch (videoError) {
+                logDebug(`triggerInterstitialVideo failed: ${formatError(videoError)}`);
+                try {
+                    await requestFallbackAd();
+                    updateStatus('Запрос на рекламу отправлен через fallback-метод.');
+                } catch (fallbackError) {
+                    logError(fallbackError);
+                }
+            } finally {
+                enableButton('Показать рекламу');
             }
         });
 
