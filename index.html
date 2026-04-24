@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RichAds Mini App</title>
+</head>
+<body>
+    <h1>RichAds Mini App</h1>
+    <p>Нажмите кнопку, чтобы показать рекламу RichAds.</p>
+    <button id="show-ad">Показать рекламу</button>
+
+    <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+    <script src="https://richinfo.co/richpartners/telegram/js/tg-ob.js"></script>
+    <script>
+        const richadsController = new window.TelegramAdsController();
+        richadsController.initialize({
+            pubId: "YOUR_PUB_ID",
+            appId: "YOUR_APP_ID",
+            debug: true
+        });
+
+        document.getElementById('show-ad').addEventListener('click', () => {
+            richadsController.triggerInterstitialVideo()
+                .then(result => {
+                    console.log('Ad result:', result);
+                    alert('Реклама показана');
+                })
+                .catch(error => {
+                    console.error('Ad error:', error);
+                    alert('Ошибка показа рекламы');
+                });
+        });
+    </script>
+</body>
+</html>
