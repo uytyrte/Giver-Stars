@@ -118,21 +118,44 @@
             BUTTON.textContent = label;
         }
 
+        function enableButton(label = 'Показать рекламу') {
+            BUTTON.disabled = false;
+            BUTTON.textContent = label;
+        }
+
         function applyTheme() {
             const tg = window.Telegram?.WebApp || window.Telegram?.webApp;
             if (!tg) return;
-            if (tg.expand) tg.expand();
+            if (typeof tg.ready === 'function') tg.ready();
             const params = tg.themeParams || {};
             if (params.bg_color) document.body.style.background = params.bg_color;
         }
 
+        function formatError(error) {
+            if (!error) return 'Неизвестная ошибка';
+            if (typeof error === 'string') return error;
+            if (error.message) return error.message;
+            try {
+                return JSON.stringify(error);
+            } catch {
+                return String(error);
+            }
+        }
+
+        function logError(error) {
+            const text = formatError(error);
+            console.error('RichAds error:', error);
+            updateStatus(`Ошибка показа рекламы: ${text}`);
+            enableButton('Повторить');
+        }
+
         applyTheme();
 
-        const hasAdsController = typeof window.TelegramAdsController === 'function';
+        const AdsClass = window.TelegramAdsController || window.Telegram?.TelegramAdsController;
         const isConfigured = PUB_ID !== 'YOUR_PUB_ID' && APP_ID !== 'YOUR_APP_ID';
 
-        if (!hasAdsController) {
-            updateStatus('RichAds не загружен. Реклама пока недоступна.');
+        if (!AdsClass) {
+            updateStatus('RichAds не загружен. Проверьте подключение tg-ob.js.');
             disableButton('Реклама недоступна');
         } else if (!isConfigured) {
             updateStatus('RichAds не настроен. Администратор должен добавить pubId и appId.');
@@ -140,30 +163,49 @@
         } else {
             updateStatus('Готово. Нажмите кнопку, чтобы запустить рекламу.');
 
-            const richadsController = new window.TelegramAdsController();
-            richadsController.initialize({
-                pubId: PUB_ID,
-                appId: APP_ID,
-                debug: true
-            });
+            const richadsController = new AdsClass();
 
-            BUTTON.addEventListener('click', () => {
-                BUTTON.textContent = 'Загрузка...';
-                BUTTON.disabled = true;
+            try {
+                richadsController.initialize({
+                    pubId: PUB_ID,
+                    appId: APP_ID,
+                    debug: true
+                });
+            } catch (error) {
+                logError(error);
+                return;
+            }
 
-                richadsController.triggerInterstitialVideo()
-                    .then(result => {
-                        console.log('Ad result:', result);
-                        updateStatus('Реклама показана. Спасибо!');
-                        BUTTON.textContent = 'Показать рекламу';
-                        BUTTON.disabled = false;
-                    })
-                    .catch(error => {
-                        console.error('Ad error:', error);
-                        updateStatus('Ошибка показа рекламы. Попробуйте позже.');
-                        BUTTON.textContent = 'Показать рекламу';
-                        BUTTON.disabled = false;
-                    });
+            async function tryAdMethods() {
+                const methods = [
+                    { name: 'Video', fn: () => richadsController.triggerInterstitialVideo() },
+                    { name: 'Banner', fn: () => richadsController.triggerInterstitialBanner() },
+                    { name: 'Push', fn: () => richadsController.triggerNativeNotification() }
+                ];
+
+                for (const method of methods) {
+                    try {
+                        updateStatus(`Пробуем показать ${method.name}-рекламу...`);
+                        const result = await method.fn();
+                        console.log(`Ad ${method.name} result:`, result);
+                        updateStatus(`Реклама ${method.name} показана.`);
+                        enableButton('Показать рекламу');
+                        return;
+                    } catch (error) {
+                        console.warn(`Ad ${method.name} failed:`, error);
+                    }
+                }
+
+                throw new Error('Ни один формат рекламы не доступен');
+            }
+
+            BUTTON.addEventListener('click', async () => {
+                disableButton('Загрузка...');
+                try {
+                    await tryAdMethods();
+                } catch (error) {
+                    logError(error);
+                }
             });
         }
     </script>
